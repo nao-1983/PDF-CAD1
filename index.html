@@ -1,0 +1,2080 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="PDF CAD">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#1e2228">
+<title>PDF CAD</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden;
+    font-family: -apple-system, "Hiragino Sans", sans-serif;
+    background: #1e2228; color: #e8eaed; user-select: none; -webkit-user-select: none;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right); }
+  #app { display: flex; flex-direction: column; height: 100vh; }
+
+  #toolbar { display: flex; align-items: center; gap: 4px; padding: 6px 8px;
+    background: #2a2f37; border-bottom: 1px solid #3a4049; flex-wrap: wrap; }
+  .tool-btn { min-width: 50px; height: 42px; padding: 0 10px; border: 1px solid #3a4049;
+    background: #353b44; color: #e8eaed; border-radius: 7px; font-size: 12px;
+    font-weight: 500; cursor: pointer; touch-action: manipulation; }
+  .tool-btn:active { background: #4a5260; }
+  .tool-btn.active { background: #5b8def; border-color: #5b8def; color: white; }
+  .tool-btn.danger { background: #5a3a3a; }
+  .tool-btn.file { background: #3a5a3a; }
+  .tool-btn.toggle.on { background: #2a7a4a; border-color: #2a7a4a; }
+  .divider { width: 1px; height: 26px; background: #3a4049; margin: 0 2px; }
+
+  #info { padding: 5px 10px; background: #252a31; font-size: 11px;
+    color: #9aa3ad; border-bottom: 1px solid #3a4049;
+    display: flex; gap: 14px; flex-wrap: wrap; }
+  #info b { color: #e8eaed; }
+
+  #style-bar { display: flex; align-items: center; gap: 6px; padding: 5px 8px;
+    background: #252a31; border-bottom: 1px solid #3a4049; flex-wrap: wrap; }
+  #style-bar label { font-size: 11px; color: #9aa3ad; }
+  .color-sw { width: 26px; height: 26px; border-radius: 4px; cursor: pointer;
+    border: 2px solid #3a4049; }
+  .color-sw.active { border-color: #fff; }
+  .lt-btn, .lw-btn { padding: 4px 8px; background: #353b44; border: 1px solid #3a4049;
+    border-radius: 4px; color: #e8eaed; font-size: 11px; cursor: pointer; min-width: 36px; }
+  .lt-btn.active, .lw-btn.active { background: #5b8def; border-color: #5b8def; }
+  .lt-btn svg { vertical-align: middle; }
+
+  #canvas-wrap { flex: 1; position: relative; overflow: hidden; background: #14171c;
+    touch-action: none; }
+  #pdf-canvas, #draw-canvas {
+    position: absolute; top: 0; left: 0;
+    width: 100%; height: 100%;
+  }
+  #pdf-canvas { background: white; }
+  #draw-canvas { pointer-events: none; }
+
+  /* ルーペ: 縦線と横線を子要素で描く */
+  #loupe { position: absolute; width: 140px; height: 140px;
+    border-radius: 50%; border: 3px solid #ffc107; pointer-events: none;
+    background: white; overflow: hidden; display: none; z-index: 50;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+  #loupe canvas { position: absolute; top: 0; left: 0;
+    width: 100%; height: 100%; }
+  .cross-v { position: absolute; top: 50%; left: 50%;
+    width: 1.5px; height: 40px;
+    transform: translate(-50%, -50%);
+    background: #d32f2f; pointer-events: none; }
+  .cross-h { position: absolute; top: 50%; left: 50%;
+    width: 40px; height: 1.5px;
+    transform: translate(-50%, -50%);
+    background: #d32f2f; pointer-events: none; }
+
+  .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+    display: none; align-items: center; justify-content: center; z-index: 100; }
+  .modal-bg.show { display: flex; }
+  .modal { background: #2a2f37; border-radius: 12px; padding: 20px; min-width: 280px;
+    border: 1px solid #3a4049; }
+  .modal h3 { margin: 0 0 12px; font-size: 16px; }
+  .modal label { display: block; font-size: 12px; color: #9aa3ad; margin: 8px 0 4px; }
+  .modal input, .modal textarea { width: 100%; padding: 10px; font-size: 16px;
+    background: #1e2228; border: 1px solid #3a4049; border-radius: 6px;
+    color: #e8eaed; font-family: inherit; }
+  .modal textarea { resize: vertical; min-height: 60px; }
+  .modal-btns { display: flex; gap: 8px; margin-top: 16px; }
+  .modal-btns button { flex: 1; padding: 12px; border-radius: 6px; border: none;
+    font-size: 14px; font-weight: 500; cursor: pointer; }
+  .btn-primary { background: #5b8def; color: white; }
+  .btn-cancel { background: #3a4049; color: #e8eaed; }
+
+  #status { position: absolute; bottom: 12px; left: 12px; padding: 8px 12px;
+    background: rgba(40,45,52,0.95); border-radius: 6px; font-size: 12px;
+    color: #5b8def; pointer-events: none; max-width: 80%; }
+
+  /* 確定/キャンセルバー: 画面下より少し上に配置(下端のホームインジケータ等を避ける) */
+  #confirm-bar { position: absolute; bottom: 60px; left: 50%; transform: translateX(-50%);
+    display: none; gap: 8px; z-index: 60; }
+  #confirm-bar.show { display: flex; }
+  #confirm-bar button { padding: 16px 24px; border-radius: 10px; border: none;
+    font-size: 16px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5); min-width: 100px; }
+  #confirm-bar .ok { background: #2e7d32; color: white; }
+  #confirm-bar .cancel { background: #c62828; color: white; }
+
+  /* 仮配置マーカー(指でドラッグ可) */
+  .picked-marker { position: absolute; width: 24px; height: 24px;
+    border-radius: 50%; border: 3px solid #ffc107;
+    background: rgba(255, 193, 7, 0.3);
+    transform: translate(-50%, -50%); pointer-events: none; z-index: 40; }
+  .picked-marker.confirmed { border-color: #4caf50; background: rgba(76, 175, 80, 0.3); }
+
+  input[type="file"] { display: none; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="toolbar">
+    <label class="tool-btn file" for="file-input">📂 PDF</label>
+    <input type="file" id="file-input" accept="application/pdf">
+    <div class="divider"></div>
+    <button class="tool-btn active" data-tool="scale">📏縮尺</button>
+    <button class="tool-btn" data-tool="pen">✎ペン</button>
+    <button class="tool-btn toggle on" id="straighten-toggle">直線化:ON</button>
+    <button class="tool-btn" data-tool="line-len">⊢長さ線</button>
+    <button class="tool-btn" data-tool="circle">○円</button>
+    <button class="tool-btn" data-tool="rect">▭矩形</button>
+    <button class="tool-btn" data-tool="ellipse">⬭楕円</button>
+    <button class="tool-btn" data-tool="midpoint">⊙中点</button>
+    <button class="tool-btn" data-tool="corner">⌐コーナー</button>
+    <button class="tool-btn" data-tool="fillet">◜フィレットR</button>
+    <button class="tool-btn" data-tool="rotate-line">↻角度変更</button>
+    <button class="tool-btn" data-tool="dim">⟷寸法</button>
+    <button class="tool-btn" data-tool="text">A文字</button>
+    <button class="tool-btn" data-tool="select">☞選択</button>
+    <div class="divider"></div>
+    <button class="tool-btn" id="undo-btn">↶戻す</button>
+    <button class="tool-btn danger" id="clear-btn">🗑全消去</button>
+    <div class="divider"></div>
+    <button class="tool-btn file" id="export-btn">💾出力</button>
+    <button class="tool-btn" id="zoom-fit">⊡全体</button>
+  </div>
+
+  <div id="style-bar">
+    <label>色:</label>
+    <div class="color-sw active" data-color="#d32f2f" style="background:#d32f2f"></div>
+    <div class="color-sw" data-color="#000000" style="background:#000000"></div>
+    <div class="color-sw" data-color="#1976d2" style="background:#1976d2"></div>
+    <div class="color-sw" data-color="#388e3c" style="background:#388e3c"></div>
+    <div class="color-sw" data-color="#f57c00" style="background:#f57c00"></div>
+    <div class="divider"></div>
+    <label>線種:</label>
+    <button class="lt-btn active" data-lt="solid"><svg width="32" height="6"><line x1="0" y1="3" x2="32" y2="3" stroke="#e8eaed" stroke-width="2"/></svg></button>
+    <button class="lt-btn" data-lt="dashed"><svg width="32" height="6"><line x1="0" y1="3" x2="32" y2="3" stroke="#e8eaed" stroke-width="2" stroke-dasharray="6,3"/></svg></button>
+    <button class="lt-btn" data-lt="dashdot"><svg width="32" height="6"><line x1="0" y1="3" x2="32" y2="3" stroke="#e8eaed" stroke-width="2" stroke-dasharray="8,3,2,3"/></svg></button>
+    <button class="lt-btn" data-lt="dotted"><svg width="32" height="6"><line x1="0" y1="3" x2="32" y2="3" stroke="#e8eaed" stroke-width="2" stroke-dasharray="2,3"/></svg></button>
+    <div class="divider"></div>
+    <label>太さ:</label>
+    <button class="lw-btn" data-lw="0.6">細</button>
+    <button class="lw-btn active" data-lw="1.2">標準</button>
+    <button class="lw-btn" data-lw="2.0">太</button>
+    <button class="lw-btn" data-lw="3.0">極太</button>
+    <div class="divider"></div>
+    <label>文字:</label>
+    <button class="lw-btn" data-fs="6">極小</button>
+    <button class="lw-btn" data-fs="9">小</button>
+    <button class="lw-btn active" data-fs="12">中</button>
+    <button class="lw-btn" data-fs="18">大</button>
+  </div>
+
+  <div id="info">
+    <span>ツール: <b id="tool-name">縮尺</b></span>
+    <span>縮尺: <b id="scale-info">未設定</b></span>
+    <span>図形: <b id="shape-count">0</b></span>
+    <span>ズーム: <b id="zoom-info">100%</b></span>
+    <span style="color:#666">2本指=移動&ピンチズーム</span>
+  </div>
+  <div id="canvas-wrap">
+    <canvas id="pdf-canvas"></canvas>
+    <canvas id="draw-canvas"></canvas>
+    <div id="loupe">
+      <canvas id="loupe-canvas"></canvas>
+      <div class="cross-v"></div>
+      <div class="cross-h"></div>
+    </div>
+    <div id="status">PDFを開いてください</div>
+    <div id="confirm-bar">
+      <button class="cancel" id="confirm-cancel">✗ キャンセル</button>
+      <button class="ok" id="confirm-ok">✓ 確定</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="scale-modal">
+  <div class="modal">
+    <h3>📏 縮尺の設定</h3>
+    <div style="font-size:12px;color:#9aa3ad;margin-bottom:8px">2点間の実寸を入力</div>
+    <label>実寸 (mm)</label>
+    <input type="number" id="scale-input" placeholder="例: 1000" step="0.1">
+    <div class="modal-btns">
+      <button class="btn-cancel" id="scale-cancel">キャンセル</button>
+      <button class="btn-primary" id="scale-ok">決定</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="fillet-modal">
+  <div class="modal">
+    <h3>◜ フィレット半径</h3>
+    <label>R (mm)</label>
+    <input type="number" id="fillet-input" value="10" step="0.1">
+    <div class="modal-btns">
+      <button class="btn-cancel" id="fillet-cancel">キャンセル</button>
+      <button class="btn-primary" id="fillet-ok">決定</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="length-modal">
+  <div class="modal">
+    <h3>⊢ 線の長さ入力</h3>
+    <div style="font-size:12px;color:#9aa3ad;margin-bottom:8px">長さを入力後、方向をタップ</div>
+    <label>長さ (mm)</label>
+    <input type="number" id="length-input" placeholder="例: 500" step="0.1">
+    <div class="modal-btns">
+      <button class="btn-cancel" id="length-cancel">キャンセル</button>
+      <button class="btn-primary" id="length-ok">次へ</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="text-modal">
+  <div class="modal">
+    <h3>A 文字入力</h3>
+    <label>テキスト</label>
+    <textarea id="text-input" placeholder="例: VVF1.6-2C"></textarea>
+    <div class="modal-btns">
+      <button class="btn-cancel" id="text-cancel">キャンセル</button>
+      <button class="btn-primary" id="text-ok">配置</button>
+    </div>
+  </div>
+</div>
+
+<!-- 円: 描画方式選択 -->
+<div class="modal-bg" id="circle-mode-modal">
+  <div class="modal">
+    <h3>○ 円の描き方</h3>
+    <div style="font-size:12px;color:#9aa3ad;margin-bottom:8px">中心点はもう決まっています</div>
+    <div class="modal-btns" style="flex-direction:column;gap:8px">
+      <button class="btn-primary" id="circle-by-radius">半径(mm)を入力</button>
+      <button class="btn-primary" id="circle-by-point" style="background:#6c757d">周上の点を長押しで指定</button>
+      <button class="btn-cancel" id="circle-mode-cancel">キャンセル</button>
+    </div>
+  </div>
+</div>
+
+<!-- 円: 半径入力 -->
+<div class="modal-bg" id="circle-radius-modal">
+  <div class="modal">
+    <h3>○ 半径入力</h3>
+    <label>半径 (mm)</label>
+    <input type="number" id="circle-radius-input" placeholder="例: 50" step="0.1">
+    <div class="modal-btns">
+      <button class="btn-cancel" id="circle-radius-cancel">キャンセル</button>
+      <button class="btn-primary" id="circle-radius-ok">配置</button>
+    </div>
+  </div>
+</div>
+
+<!-- 矩形: モード選択 -->
+<div class="modal-bg" id="rect-mode-modal">
+  <div class="modal">
+    <h3>▭ 矩形の描き方</h3>
+    <div style="font-size:12px;color:#9aa3ad;margin-bottom:8px">1点目はもう決まっています</div>
+    <div class="modal-btns" style="flex-direction:column;gap:8px">
+      <button class="btn-primary" id="rect-by-size">幅×高さ(mm)を入力</button>
+      <button class="btn-primary" id="rect-by-point" style="background:#6c757d">対角の点を長押しで指定</button>
+      <button class="btn-cancel" id="rect-mode-cancel">キャンセル</button>
+    </div>
+  </div>
+</div>
+
+<!-- 矩形: サイズ入力 -->
+<div class="modal-bg" id="rect-size-modal">
+  <div class="modal">
+    <h3>▭ サイズ入力</h3>
+    <label>幅 (mm)</label>
+    <input type="number" id="rect-w-input" placeholder="例: 200" step="0.1">
+    <label>高さ (mm)</label>
+    <input type="number" id="rect-h-input" placeholder="例: 100" step="0.1">
+    <div class="modal-btns">
+      <button class="btn-cancel" id="rect-size-cancel">キャンセル</button>
+      <button class="btn-primary" id="rect-size-ok">配置</button>
+    </div>
+  </div>
+</div>
+
+<!-- 楕円: パラメータ入力 -->
+<div class="modal-bg" id="ellipse-modal">
+  <div class="modal">
+    <h3>⬭ 楕円</h3>
+    <label>長軸 a (mm)</label>
+    <input type="number" id="ellipse-a-input" placeholder="例: 100" step="0.1">
+    <label>短軸 b (mm)</label>
+    <input type="number" id="ellipse-b-input" placeholder="例: 60" step="0.1">
+    <label>回転角 (度) ※0は水平方向が長軸</label>
+    <input type="number" id="ellipse-rot-input" value="0" step="1">
+    <div class="modal-btns">
+      <button class="btn-cancel" id="ellipse-cancel">キャンセル</button>
+      <button class="btn-primary" id="ellipse-ok">配置</button>
+    </div>
+  </div>
+</div>
+
+<!-- 角度変更 -->
+<div class="modal-bg" id="rotate-modal">
+  <div class="modal">
+    <h3>↻ 角度変更</h3>
+    <div style="font-size:12px;color:#9aa3ad;margin-bottom:8px" id="rotate-info"></div>
+    <label>新しい角度 (度)</label>
+    <input type="number" id="rotate-angle-input" step="0.5">
+    <div style="display:flex;gap:8px;margin-top:8px;font-size:11px;color:#9aa3ad">
+      <label><input type="radio" name="rotate-pivot" value="a" checked> 始点を固定</label>
+      <label><input type="radio" name="rotate-pivot" value="b"> 終点を固定</label>
+      <label><input type="radio" name="rotate-pivot" value="mid"> 中央を固定</label>
+    </div>
+    <div class="modal-btns">
+      <button class="btn-cancel" id="rotate-cancel">キャンセル</button>
+      <button class="btn-primary" id="rotate-ok">変更</button>
+    </div>
+  </div>
+</div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+const DPR = window.devicePixelRatio || 1;
+
+const state = {
+  pdfDoc: null, pdfPage: null, pdfBytes: null,
+  pdfWidth: 0, pdfHeight: 0,
+  viewZoom: 1, panX: 0, panY: 0,
+  tool: 'scale', shapes: [],
+  scale: null,
+  curColor: '#d32f2f', curLineType: 'solid', curLineWidth: 1.2, curFontSize: 12,
+  straighten: true,
+  penStroke: null,
+  tempPoints: [], pendingScalePoints: null, pendingFilletLines: null, pendingTextPos: null,
+  pendingLineLength: null,
+  pendingRotateLine: null,
+  lastMove: null,
+  longPress: null,
+  pdfBitmap: null, pdfBitmapScale: 0,
+  snapGrid: null,
+  // 仮配置中の点 (長押し後、確定前)
+  pickState: null,  // { screenX, screenY, pdfPt, snappedPt }
+  // テキスト移動中
+  textDrag: null,   // { shapeIndex, startScreenX, startScreenY, startPosX, startPosY }
+  // PDF再ラスタライズの抑制(ピンチ中はOFF)
+  rasterizeBlocked: false,
+};
+
+const pdfCanvas = document.getElementById('pdf-canvas');
+const drawCanvas = document.getElementById('draw-canvas');
+const pctx = pdfCanvas.getContext('2d');
+const dctx = drawCanvas.getContext('2d');
+const wrap = document.getElementById('canvas-wrap');
+const loupe = document.getElementById('loupe');
+const loupeCanvas = document.getElementById('loupe-canvas');
+const lctx = loupeCanvas.getContext('2d');
+const statusEl = document.getElementById('status');
+
+const LINE_DASH = {
+  solid: [], dashed: [8, 4], dashdot: [10, 4, 2, 4], dotted: [2, 4]
+};
+
+// ===== Canvas サイズ管理 =====
+function resizeCanvases() {
+  const rect = wrap.getBoundingClientRect();
+  for (const c of [pdfCanvas, drawCanvas]) {
+    c.width = Math.round(rect.width * DPR);
+    c.height = Math.round(rect.height * DPR);
+    c.style.width = rect.width + 'px';
+    c.style.height = rect.height + 'px';
+  }
+  // PDFを再描画
+  renderScene();
+}
+window.addEventListener('resize', resizeCanvases);
+
+// ===== 座標変換 =====
+// 画面pixel(CSS) → PDF原寸pt
+function screenToPdf(sx, sy) {
+  const rect = wrap.getBoundingClientRect();
+  const x = (sx - rect.left - state.panX) / state.viewZoom;
+  const y = (sy - rect.top - state.panY) / state.viewZoom;
+  return { x, y };
+}
+// PDF原寸pt → 画面pixel(CSS、wrap基準)
+function pdfToScreen(px, py) {
+  return {
+    x: px * state.viewZoom + state.panX,
+    y: py * state.viewZoom + state.panY
+  };
+}
+
+// ===== PDF読み込み =====
+document.getElementById('file-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  statusEl.textContent = 'PDF読み込み中...';
+  const ab = await file.arrayBuffer();
+  state.pdfBytes = ab.slice(0);
+  const pdf = await pdfjsLib.getDocument({data: new Uint8Array(ab)}).promise;
+  state.pdfDoc = pdf;
+  state.pdfPage = await pdf.getPage(1);
+  const vp = state.pdfPage.getViewport({scale: 1});
+  state.pdfWidth = vp.width;
+  state.pdfHeight = vp.height;
+  // 高解像度のPDFビットマップを生成しておく(初期4倍)
+  await renderPdfBitmap(4);
+  fitToScreen();
+  statusEl.textContent = '読み込み完了。スナップ点を解析中...';
+  // バックグラウンドで特徴点を抽出
+  setTimeout(async () => {
+    const n = await extractSnapPoints();
+    statusEl.textContent = `読み込み完了 (スナップ点 ${n} 個)`;
+  }, 50);
+});
+
+// PDFベクトル情報から線分の端点を抽出
+async function extractSnapPoints() {
+  if (!state.pdfPage) return 0;
+  try {
+    const opList = await state.pdfPage.getOperatorList();
+    const fns = opList.fnArray;
+    const args = opList.argsArray;
+    const OPS = pdfjsLib.OPS;
+    const vp = state.pdfPage.getViewport({scale: 1});
+    const transform = vp.transform;
+    function apply(m, x, y) {
+      return { x: m[0]*x + m[2]*y + m[4], y: m[1]*x + m[3]*y + m[5] };
+    }
+    function mulMat(m1, m2) {
+      return [
+        m1[0]*m2[0] + m1[2]*m2[1],
+        m1[1]*m2[0] + m1[3]*m2[1],
+        m1[0]*m2[2] + m1[2]*m2[3],
+        m1[1]*m2[2] + m1[3]*m2[3],
+        m1[0]*m2[4] + m1[2]*m2[5] + m1[4],
+        m1[1]*m2[4] + m1[3]*m2[5] + m1[5]
+      ];
+    }
+    let ctm = [1,0,0,1,0,0];
+    const ctmStack = [];
+    let curX = 0, curY = 0, startX = 0, startY = 0;
+    const grid = new PointGrid(20);
+    const seen = new Set();
+    function addPoint(x, y) {
+      const lp = apply(ctm, x, y);
+      const vp_p = apply(transform, lp.x, lp.y);
+      const key = `${Math.round(vp_p.x*2)},${Math.round(vp_p.y*2)}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      grid.add({x: vp_p.x, y: vp_p.y});
+    }
+    for (let i = 0; i < fns.length; i++) {
+      const op = fns[i], a = args[i];
+      switch (op) {
+        case OPS.save: ctmStack.push(ctm.slice()); break;
+        case OPS.restore: if (ctmStack.length) ctm = ctmStack.pop(); break;
+        case OPS.transform: ctm = mulMat(ctm, a); break;
+        case OPS.constructPath: {
+          const pathOps = a[0], pathArgs = a[1];
+          let ai = 0;
+          for (const po of pathOps) {
+            switch (po) {
+              case OPS.moveTo: {
+                curX = pathArgs[ai++]; curY = pathArgs[ai++];
+                startX = curX; startY = curY;
+                addPoint(curX, curY);
+                break;
+              }
+              case OPS.lineTo: {
+                const nx = pathArgs[ai++], ny = pathArgs[ai++];
+                addPoint(nx, ny);
+                curX = nx; curY = ny;
+                break;
+              }
+              case OPS.curveTo: {
+                ai += 4;
+                const nx = pathArgs[ai++], ny = pathArgs[ai++];
+                addPoint(nx, ny);
+                curX = nx; curY = ny;
+                break;
+              }
+              case OPS.curveTo2:
+              case OPS.curveTo3: {
+                ai += 2;
+                const nx = pathArgs[ai++], ny = pathArgs[ai++];
+                addPoint(nx, ny);
+                curX = nx; curY = ny;
+                break;
+              }
+              case OPS.rectangle: {
+                const x = pathArgs[ai++], y = pathArgs[ai++];
+                const w = pathArgs[ai++], h = pathArgs[ai++];
+                addPoint(x, y); addPoint(x+w, y);
+                addPoint(x+w, y+h); addPoint(x, y+h);
+                break;
+              }
+              case OPS.closePath: { curX = startX; curY = startY; break; }
+            }
+          }
+          break;
+        }
+      }
+    }
+    state.snapGrid = grid;
+    return grid.size();
+  } catch (e) {
+    console.warn('スナップ点抽出失敗:', e);
+    return 0;
+  }
+}
+
+class PointGrid {
+  constructor(cellSize) { this.cellSize = cellSize; this.cells = new Map(); }
+  key(x, y) { return `${Math.floor(x/this.cellSize)},${Math.floor(y/this.cellSize)}`; }
+  add(p) {
+    const k = this.key(p.x, p.y);
+    if (!this.cells.has(k)) this.cells.set(k, []);
+    this.cells.get(k).push(p);
+  }
+  nearest(x, y, radius) {
+    const c = this.cellSize;
+    const minCx = Math.floor((x-radius)/c), maxCx = Math.floor((x+radius)/c);
+    const minCy = Math.floor((y-radius)/c), maxCy = Math.floor((y+radius)/c);
+    let best = null, bestD = radius;
+    for (let cx = minCx; cx <= maxCx; cx++) {
+      for (let cy = minCy; cy <= maxCy; cy++) {
+        const arr = this.cells.get(`${cx},${cy}`);
+        if (!arr) continue;
+        for (const p of arr) {
+          const d = Math.hypot(p.x-x, p.y-y);
+          if (d < bestD) { bestD = d; best = p; }
+        }
+      }
+    }
+    return best;
+  }
+  size() { let n = 0; for (const arr of this.cells.values()) n += arr.length; return n; }
+}
+
+// 自分の図形の端点もスナップ対象に
+function findSnapPoint(pdfPt, screenRadius) {
+  const ptRadius = screenRadius / state.viewZoom;
+  let best = null, bestD = ptRadius;
+  // 自分の図形の端点 + midpoint
+  for (const s of state.shapes) {
+    let pts = [];
+    if (s.type === 'line') pts = [s.a, s.b];
+    else if (s.type === 'arc') pts = [s.center];
+    else if (s.type === 'dim') pts = [s.p1, s.p2];
+    else if (s.type === 'midpoint') pts = [s.pos];
+    else if (s.type === 'circle') pts = [s.center];
+    else if (s.type === 'ellipse') pts = [s.center];
+    else if (s.type === 'rect') {
+      pts = [
+        s.pos,
+        {x: s.pos.x + s.w, y: s.pos.y},
+        {x: s.pos.x + s.w, y: s.pos.y + s.h},
+        {x: s.pos.x, y: s.pos.y + s.h},
+        {x: s.pos.x + s.w/2, y: s.pos.y + s.h/2}
+      ];
+    }
+    for (const p of pts) {
+      const d = Math.hypot(p.x - pdfPt.x, p.y - pdfPt.y);
+      if (d < bestD) { bestD = d; best = p; }
+    }
+  }
+  // PDFのスナップ点
+  if (state.snapGrid) {
+    const p = state.snapGrid.nearest(pdfPt.x, pdfPt.y, bestD);
+    if (p) best = p;
+  }
+  return best;
+}
+
+// PDFを指定倍率でオフスクリーンcanvasにレンダリング
+async function renderPdfBitmap(scale) {
+  const vp = state.pdfPage.getViewport({scale});
+  const off = document.createElement('canvas');
+  off.width = vp.width;
+  off.height = vp.height;
+  const offCtx = off.getContext('2d');
+  await state.pdfPage.render({canvasContext: offCtx, viewport: vp}).promise;
+  state.pdfBitmap = off;
+  state.pdfBitmapScale = scale;  // この画像内の 1pt = scale ピクセル
+}
+
+function fitToScreen() {
+  const rect = wrap.getBoundingClientRect();
+  const sx = rect.width / state.pdfWidth;
+  const sy = rect.height / state.pdfHeight;
+  state.viewZoom = Math.min(sx, sy) * 0.95;
+  state.panX = (rect.width - state.pdfWidth * state.viewZoom) / 2;
+  state.panY = (rect.height - state.pdfHeight * state.viewZoom) / 2;
+  // ズームに見合った解像度でPDFを再ラスタライズ
+  ensurePdfResolution();
+  renderScene();
+}
+
+// 現在のズーム倍率に応じてPDFビットマップ解像度が足りなければ再生成
+let pendingRaster = false;
+async function ensurePdfResolution() {
+  if (!state.pdfPage) return;
+  if (state.rasterizeBlocked) return;  // ピンチ中は抑制
+  const need = state.viewZoom * DPR * 1.5;
+  if (need > state.pdfBitmapScale * 1.1 ||
+      (state.pdfBitmapScale > 2 && need < state.pdfBitmapScale * 0.4)) {
+    if (pendingRaster) return;
+    pendingRaster = true;
+    const newScale = Math.max(2, Math.min(8, need));
+    await renderPdfBitmap(newScale);
+    pendingRaster = false;
+    renderScene();
+  }
+}
+
+// ===== 統合レンダリング =====
+let renderScheduled = false;
+function renderScene() {
+  if (renderScheduled) return;
+  renderScheduled = true;
+  requestAnimationFrame(() => {
+    renderScheduled = false;
+    drawPdf();
+    drawShapes();
+    document.getElementById('zoom-info').textContent = Math.round(state.viewZoom * 100) + '%';
+    document.getElementById('shape-count').textContent = state.shapes.length;
+  });
+}
+
+function drawPdf() {
+  pctx.setTransform(1, 0, 0, 1, 0, 0);
+  pctx.clearRect(0, 0, pdfCanvas.width, pdfCanvas.height);
+  if (!state.pdfBitmap) {
+    pctx.fillStyle = '#222';
+    pctx.fillRect(0, 0, pdfCanvas.width, pdfCanvas.height);
+    return;
+  }
+  // 画面の表示領域でPDFビットマップから対応領域を切り出し描画
+  // 配置: (panX, panY)位置にPDF原点、原寸ptをviewZoom倍にして表示
+  const scale = state.pdfBitmapScale;
+  // PDF全体を描画(ビットマップ全体を、画面上の対応位置・サイズに)
+  pctx.imageSmoothingEnabled = true;
+  pctx.imageSmoothingQuality = 'high';
+  const dx = state.panX * DPR;
+  const dy = state.panY * DPR;
+  const dw = state.pdfWidth * state.viewZoom * DPR;
+  const dh = state.pdfHeight * state.viewZoom * DPR;
+  pctx.drawImage(state.pdfBitmap, 0, 0, state.pdfBitmap.width, state.pdfBitmap.height,
+                 dx, dy, dw, dh);
+}
+
+function drawShapes() {
+  dctx.setTransform(1, 0, 0, 1, 0, 0);
+  dctx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+  // すべてベクトルで描画 (CSS pixel → device pixel)
+  // (panX, panY) を原点に、viewZoom倍率で PDF→画面 変換
+  dctx.setTransform(state.viewZoom * DPR, 0, 0, state.viewZoom * DPR,
+                    state.panX * DPR, state.panY * DPR);
+  for (const s of state.shapes) drawShape(s);
+  if (state.penStroke) drawPenStrokePreview(state.penStroke);
+}
+
+function applyStyle(s) {
+  dctx.strokeStyle = s.color || '#d32f2f';
+  dctx.fillStyle = s.color || '#d32f2f';
+  // 線幅は画面ピクセル一定に見えるよう、viewZoomの逆数で補正
+  dctx.lineWidth = (s.lineWidth || 1.2) / state.viewZoom;
+  dctx.lineCap = 'round'; dctx.lineJoin = 'round';
+  const dash = LINE_DASH[s.lineType || 'solid'];
+  dctx.setLineDash(dash.map(v => v / state.viewZoom));
+}
+
+function drawShape(s) {
+  applyStyle(s);
+  if (s.type === 'line') {
+    dctx.beginPath();
+    dctx.moveTo(s.a.x, s.a.y);
+    dctx.lineTo(s.b.x, s.b.y);
+    dctx.stroke();
+  } else if (s.type === 'freehand') {
+    dctx.beginPath();
+    const pts = s.points;
+    dctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) dctx.lineTo(pts[i].x, pts[i].y);
+    dctx.stroke();
+  } else if (s.type === 'arc') {
+    dctx.beginPath();
+    dctx.arc(s.center.x, s.center.y, s.radius, s.startAngle, s.endAngle, s.counter);
+    dctx.stroke();
+  } else if (s.type === 'circle') {
+    dctx.beginPath();
+    dctx.arc(s.center.x, s.center.y, s.radius, 0, Math.PI*2);
+    dctx.stroke();
+  } else if (s.type === 'rect') {
+    dctx.beginPath();
+    dctx.rect(s.pos.x, s.pos.y, s.w, s.h);
+    dctx.stroke();
+  } else if (s.type === 'ellipse') {
+    dctx.beginPath();
+    dctx.ellipse(s.center.x, s.center.y, s.radiusA, s.radiusB, s.rotation || 0, 0, Math.PI*2);
+    dctx.stroke();
+  } else if (s.type === 'dim') {
+    dctx.setLineDash([]);
+    // 寸法線本体
+    dctx.beginPath();
+    dctx.moveTo(s.dimStart.x, s.dimStart.y);
+    dctx.lineTo(s.dimEnd.x, s.dimEnd.y);
+    dctx.stroke();
+    // 補助線
+    drawSimpleLine(s.p1, s.helper1End);
+    drawSimpleLine(s.p2, s.helper2End);
+    // 両端矢印
+    drawArrow(s.dimStart, s.dimEnd);
+    drawArrow(s.dimEnd, s.dimStart);
+    // 寸法値テキスト
+    const fs = s.fontSize || 12;
+    const mid = { x: (s.dimStart.x+s.dimEnd.x)/2, y: (s.dimStart.y+s.dimEnd.y)/2 };
+    const angle = Math.atan2(s.dimEnd.y-s.dimStart.y, s.dimEnd.x-s.dimStart.x);
+    dctx.save();
+    dctx.translate(mid.x, mid.y);
+    dctx.rotate(Math.abs(angle) > Math.PI/2 ? angle + Math.PI : angle);
+    const fsScreen = fs / state.viewZoom;  // 画面ピクセル単位
+    dctx.font = `bold ${fsScreen}px sans-serif`;
+    dctx.textAlign = 'center';
+    dctx.textBaseline = 'bottom';
+    const text = formatDim(s.value);
+    const m = dctx.measureText(text);
+    dctx.fillStyle = 'rgba(255,255,255,0.92)';
+    dctx.fillRect(-m.width/2 - 4/state.viewZoom, -fsScreen - 2/state.viewZoom,
+                  m.width + 8/state.viewZoom, fsScreen + 4/state.viewZoom);
+    dctx.fillStyle = s.color || '#1976d2';
+    dctx.fillText(text, 0, -2/state.viewZoom);
+    dctx.restore();
+  } else if (s.type === 'text') {
+    dctx.setLineDash([]);
+    dctx.fillStyle = s.color || '#000';
+    const fs = (s.fontSize || 12) / state.viewZoom;
+    dctx.font = `${fs}px sans-serif`;
+    dctx.textBaseline = 'top';
+    const lines = s.text.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      dctx.fillText(lines[i], s.pos.x, s.pos.y + i * fs * 1.2);
+    }
+  } else if (s.type === 'midpoint') {
+    // 小さなxマーカー
+    dctx.setLineDash([]);
+    dctx.strokeStyle = s.color || '#388e3c';
+    dctx.lineWidth = 1.5 / state.viewZoom;
+    const sz = 5 / state.viewZoom;
+    dctx.beginPath();
+    dctx.moveTo(s.pos.x - sz, s.pos.y - sz);
+    dctx.lineTo(s.pos.x + sz, s.pos.y + sz);
+    dctx.moveTo(s.pos.x - sz, s.pos.y + sz);
+    dctx.lineTo(s.pos.x + sz, s.pos.y - sz);
+    dctx.stroke();
+  }
+}
+
+function drawSimpleLine(a, b) {
+  dctx.beginPath();
+  dctx.moveTo(a.x, a.y); dctx.lineTo(b.x, b.y); dctx.stroke();
+}
+
+function drawArrow(tip, base) {
+  const dx = base.x - tip.x, dy = base.y - tip.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 1) return;
+  const ux = dx/len, uy = dy/len;
+  // 矢じりサイズ: 画面ピクセル基準
+  const al = 10 / state.viewZoom;
+  const aw = 4 / state.viewZoom;
+  const nx = -uy, ny = ux;
+  dctx.beginPath();
+  dctx.moveTo(tip.x, tip.y);
+  dctx.lineTo(tip.x + ux*al + nx*aw, tip.y + uy*al + ny*aw);
+  dctx.lineTo(tip.x + ux*al - nx*aw, tip.y + uy*al - ny*aw);
+  dctx.closePath();
+  dctx.fillStyle = dctx.strokeStyle;
+  dctx.fill();
+}
+
+function formatDim(mm) { return Math.round(mm) + ' mm'; }
+
+function drawPenStrokePreview(pts) {
+  dctx.strokeStyle = state.curColor;
+  dctx.fillStyle = state.curColor;
+  dctx.lineWidth = state.curLineWidth / state.viewZoom;
+  dctx.lineCap = 'round'; dctx.lineJoin = 'round';
+  dctx.setLineDash(LINE_DASH[state.curLineType].map(v => v / state.viewZoom));
+  dctx.beginPath();
+  dctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) dctx.lineTo(pts[i].x, pts[i].y);
+  dctx.stroke();
+}
+
+// ===== ツール選択 =====
+document.querySelectorAll('[data-tool]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-tool]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.tool = btn.dataset.tool;
+    state.tempPoints = [];
+    state.penStroke = null;
+    document.getElementById('tool-name').textContent = btn.textContent.trim();
+    renderScene();
+    updateStatus();
+  });
+});
+
+document.getElementById('straighten-toggle').addEventListener('click', (e) => {
+  state.straighten = !state.straighten;
+  e.target.classList.toggle('on', state.straighten);
+  e.target.textContent = '直線化:' + (state.straighten ? 'ON' : 'OFF');
+});
+
+document.querySelectorAll('.color-sw').forEach(sw => {
+  sw.addEventListener('click', () => {
+    document.querySelectorAll('.color-sw').forEach(s => s.classList.remove('active'));
+    sw.classList.add('active');
+    state.curColor = sw.dataset.color;
+  });
+});
+document.querySelectorAll('.lt-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.lt-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.curLineType = btn.dataset.lt;
+  });
+});
+document.querySelectorAll('.lw-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (btn.dataset.lw) {
+      document.querySelectorAll('.lw-btn[data-lw]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.curLineWidth = parseFloat(btn.dataset.lw);
+    } else if (btn.dataset.fs) {
+      document.querySelectorAll('.lw-btn[data-fs]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.curFontSize = parseFloat(btn.dataset.fs);
+    }
+  });
+});
+
+function updateStatus() {
+  const msgs = {
+    scale: '元図面の点を長押し→ドラッグで微調整→✓確定',
+    pen: state.straighten ? 'ペンで線を引く(直線化ON)' : 'ペンで自由曲線を描く',
+    'line-len': '始点を長押し→✓確定→長さ入力→方向タップ',
+    midpoint: '1点目長押し→✓→2点目長押し→✓で中点配置',
+    circle: '中心を長押し→✓→半径mm or 周上点を指定',
+    rect: '1点目を長押し→✓→サイズmm or 対角点を指定',
+    ellipse: '中心を長押し→✓→長軸・短軸・回転角を入力',
+    corner: '1本目の線→2本目の線(交点で接合)',
+    fillet: '1本目の線→2本目の線→R値入力',
+    'rotate-line': '線をタップ→新しい角度と回転中心を選んで変更',
+    dim: '1点目長押し→✓→2点目長押し→✓→寸法線位置長押し→✓',
+    text: 'タップで新規配置/既存テキストはドラッグで移動',
+    select: '図形をタップで削除'
+  };
+  statusEl.textContent = msgs[state.tool] || 'ツール選択';
+}
+
+// ===== ルーペ =====
+function showLoupe(sx, sy) {
+  const rect = wrap.getBoundingClientRect();
+  const px = sx - rect.left, py = sy - rect.top;
+  let lx = px - 160, ly = py - 160;
+  if (lx < 8) lx = px + 30;
+  if (ly < 8) ly = py + 30;
+  loupe.style.left = lx + 'px';
+  loupe.style.top = ly + 'px';
+  loupe.style.display = 'block';
+
+  const zoom = 3;
+  const size = 140;
+  loupeCanvas.width = size * DPR;
+  loupeCanvas.height = size * DPR;
+  loupeCanvas.style.width = size + 'px';
+  loupeCanvas.style.height = size + 'px';
+  lctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  lctx.clearRect(0, 0, size, size);
+  // 拡大表示: 指の位置を中心に拡大
+  const srcSize = size / zoom;
+  // pdfCanvasから対応領域を切り出し
+  const srcX = (px - srcSize/2) * DPR;
+  const srcY = (py - srcSize/2) * DPR;
+  const srcW = srcSize * DPR;
+  const srcH = srcSize * DPR;
+  lctx.imageSmoothingEnabled = true;
+  try {
+    lctx.drawImage(pdfCanvas, srcX, srcY, srcW, srcH, 0, 0, size, size);
+    lctx.drawImage(drawCanvas, srcX, srcY, srcW, srcH, 0, 0, size, size);
+  } catch (e) { /* 範囲外でも無視 */ }
+}
+function hideLoupe() { loupe.style.display = 'none'; }
+
+// ===== タッチ操作 =====
+let touchState = null;  // { mode: 'pan'|'pinch'|'draw'|'longpress-wait', ... }
+
+wrap.addEventListener('touchstart', handleTouchStart, {passive: false});
+wrap.addEventListener('touchmove', handleTouchMove, {passive: false});
+wrap.addEventListener('touchend', handleTouchEnd, {passive: false});
+wrap.addEventListener('mousedown', handleMouseDown);
+wrap.addEventListener('mousemove', handleMouseMove);
+wrap.addEventListener('mouseup', handleMouseUp);
+
+function handleTouchStart(e) {
+  e.preventDefault();
+  const ts = Array.from(e.touches);
+  if (ts.length === 2) {
+    cancelLongPress();
+    hideLoupe();
+    state.penStroke = null;
+    state.rasterizeBlocked = true;  // ピンチ中はラスタライズ抑制
+    touchState = {
+      mode: 'pinch',
+      startDist: dist2(ts[0], ts[1]),
+      startCx: (ts[0].clientX + ts[1].clientX) / 2,
+      startCy: (ts[0].clientY + ts[1].clientY) / 2,
+      startZoom: state.viewZoom,
+      startPanX: state.panX,
+      startPanY: state.panY
+    };
+    return;
+  }
+  if (ts.length === 1) {
+    const t = ts[0];
+    const now = Date.now();
+    // 仮配置点が表示中なら、それを掴んでドラッグ
+    if (state.pickState) {
+      const dx = t.clientX - (state.pickState.screenX + wrap.getBoundingClientRect().left);
+      const dy = t.clientY - (state.pickState.screenY + wrap.getBoundingClientRect().top);
+      if (Math.hypot(dx, dy) < 40) {
+        touchState = { mode: 'pick-drag' };
+        showLoupeAt(state.pickState.screenX, state.pickState.screenY);
+        return;
+      }
+    }
+    // テキストツール中、既存テキストを掴んだら移動モード
+    if (state.tool === 'text') {
+      const idx = findTextAt(t.clientX, t.clientY);
+      if (idx !== null) {
+        const s = state.shapes[idx];
+        touchState = {
+          mode: 'text-drag',
+          shapeIndex: idx,
+          startX: t.clientX, startY: t.clientY,
+          startPosX: s.pos.x, startPosY: s.pos.y
+        };
+        return;
+      }
+    }
+    if (state.tool === 'pen') {
+      const p = screenToPdf(t.clientX, t.clientY);
+      state.penStroke = [p];
+      touchState = { mode: 'draw', startTime: now, startX: t.clientX, startY: t.clientY };
+    } else if (['scale', 'dim', 'line-len', 'midpoint', 'circle', 'rect', 'ellipse'].includes(state.tool)) {
+      // 長押し+ルーペで点指定
+      showLoupe(t.clientX, t.clientY);
+      touchState = {
+        mode: 'longpress-wait', startTime: now,
+        startX: t.clientX, startY: t.clientY,
+        curX: t.clientX, curY: t.clientY
+      };
+      startLongPress(t.clientX, t.clientY);
+    } else {
+      touchState = { mode: 'tap-wait', startTime: now, startX: t.clientX, startY: t.clientY };
+    }
+  }
+}
+
+// 画面座標(clientX, clientY)から既存テキストshape indexを探す
+function findTextAt(clientX, clientY) {
+  const p = screenToPdf(clientX, clientY);
+  const thresh = 15 / state.viewZoom;
+  for (let i = state.shapes.length - 1; i >= 0; i--) {
+    const s = state.shapes[i];
+    if (s.type !== 'text') continue;
+    const fs = s.fontSize || 12;
+    const lines = s.text.split('\n');
+    const w = 200; // ざっくり幅(後で実測)
+    const h = fs * lines.length * 1.2 + thresh;
+    if (p.x >= s.pos.x - thresh && p.x <= s.pos.x + w &&
+        p.y >= s.pos.y - thresh && p.y <= s.pos.y + h) {
+      return i;
+    }
+  }
+  return null;
+}
+
+function handleTouchMove(e) {
+  e.preventDefault();
+  const ts = Array.from(e.touches);
+  if (!touchState) return;
+  if (touchState.mode === 'pinch' && ts.length === 2) {
+    const d = dist2(ts[0], ts[1]);
+    const cx = (ts[0].clientX + ts[1].clientX) / 2;
+    const cy = (ts[0].clientY + ts[1].clientY) / 2;
+    const scale = d / touchState.startDist;
+    let newZoom = touchState.startZoom * scale;
+    newZoom = Math.max(0.05, Math.min(20, newZoom));
+    const rect = wrap.getBoundingClientRect();
+    const startCxLocal = touchState.startCx - rect.left;
+    const startCyLocal = touchState.startCy - rect.top;
+    const curCxLocal = cx - rect.left;
+    const curCyLocal = cy - rect.top;
+    const pdfCx = (startCxLocal - touchState.startPanX) / touchState.startZoom;
+    const pdfCy = (startCyLocal - touchState.startPanY) / touchState.startZoom;
+    state.viewZoom = newZoom;
+    state.panX = curCxLocal - pdfCx * newZoom;
+    state.panY = curCyLocal - pdfCy * newZoom;
+    renderScene();
+    // ピンチ中はラスタライズ抑制(滑らかさ優先)
+    return;
+  }
+  if (ts.length !== 1) return;
+  const t = ts[0];
+  if (touchState.mode === 'text-drag') {
+    // テキストドラッグ
+    const dx = t.clientX - touchState.startX;
+    const dy = t.clientY - touchState.startY;
+    const s = state.shapes[touchState.shapeIndex];
+    s.pos = {
+      x: touchState.startPosX + dx / state.viewZoom,
+      y: touchState.startPosY + dy / state.viewZoom
+    };
+    renderScene();
+  } else if (touchState.mode === 'pick-drag') {
+    // 仮配置点のドラッグ移動
+    const rect = wrap.getBoundingClientRect();
+    const sx = t.clientX - rect.left, sy = t.clientY - rect.top;
+    const rawPt = screenToPdf(t.clientX, t.clientY);
+    const snap = findSnapPoint(rawPt, 20);
+    const pdfPt = snap || rawPt;
+    const sp = pdfToScreen(pdfPt.x, pdfPt.y);
+    state.pickState.pdfPt = pdfPt;
+    state.pickState.screenX = sp.x;
+    state.pickState.screenY = sp.y;
+    state.pickState.snapped = !!snap;
+    showPickedMarker();
+    showLoupeAt(sp.x, sp.y);
+  } else if (touchState.mode === 'draw' && state.penStroke) {
+    state.penStroke.push(screenToPdf(t.clientX, t.clientY));
+    renderScene();
+  } else if (touchState.mode === 'longpress-wait') {
+    touchState.curX = t.clientX;
+    touchState.curY = t.clientY;
+    showLoupe(t.clientX, t.clientY);
+    const dx = t.clientX - touchState.startX, dy = t.clientY - touchState.startY;
+    if (Math.hypot(dx, dy) > 12) {
+      cancelLongPress();
+      touchState = {
+        mode: 'pan', startX: t.clientX, startY: t.clientY,
+        startPanX: state.panX, startPanY: state.panY
+      };
+      hideLoupe();
+    }
+  } else if (touchState.mode === 'tap-wait') {
+    const dx = t.clientX - touchState.startX, dy = t.clientY - touchState.startY;
+    if (Math.hypot(dx, dy) > 8) {
+      touchState = {
+        mode: 'pan', startX: t.clientX, startY: t.clientY,
+        startPanX: state.panX, startPanY: state.panY
+      };
+    }
+  } else if (touchState.mode === 'pan') {
+    state.panX = touchState.startPanX + (t.clientX - touchState.startX);
+    state.panY = touchState.startPanY + (t.clientY - touchState.startY);
+    renderScene();
+  }
+}
+
+function handleTouchEnd(e) {
+  e.preventDefault();
+  cancelLongPress();
+  if (!touchState) return;
+  const remaining = e.touches.length;
+  if (remaining === 0) {
+    if (touchState.mode === 'draw' && state.penStroke) {
+      finalizePenStroke();
+    } else if (touchState.mode === 'tap-wait') {
+      const t = e.changedTouches[0];
+      handleTap(t.clientX, t.clientY);
+    } else if (touchState.mode === 'longpress-wait') {
+      hideLoupe();
+    } else if (touchState.mode === 'pick-drag') {
+      // 仮配置点ドラッグ終了: ルーペは閉じるがマーカーと確定バーは維持
+      hideLoupe();
+    } else if (touchState.mode === 'text-drag') {
+      // 何もしない(位置は更新済み)
+    } else if (touchState.mode === 'pinch') {
+      state.rasterizeBlocked = false;
+      ensurePdfResolution();
+    } else if (touchState.mode === 'pan') {
+      ensurePdfResolution();
+    }
+    touchState = null;
+  } else if (remaining === 1 && touchState.mode === 'pinch') {
+    state.rasterizeBlocked = false;
+    const t = e.touches[0];
+    touchState = {
+      mode: 'pan', startX: t.clientX, startY: t.clientY,
+      startPanX: state.panX, startPanY: state.panY
+    };
+    ensurePdfResolution();
+  }
+}
+
+function dist2(a, b) { return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); }
+
+function startLongPress(x, y) {
+  cancelLongPress();
+  state.longPress = setTimeout(() => {
+    handleLongPress(x, y);
+    state.longPress = null;
+  }, 500);
+}
+function cancelLongPress() {
+  if (state.longPress) { clearTimeout(state.longPress); state.longPress = null; }
+}
+
+function handleLongPress(sx, sy) {
+  // 長押しで点指定するツール
+  if (!['scale', 'dim', 'line-len', 'midpoint', 'circle', 'rect', 'ellipse'].includes(state.tool)) return;
+  let x = sx, y = sy;
+  if (touchState && touchState.curX !== undefined) { x = touchState.curX; y = touchState.curY; }
+  // PDF座標に変換 + スナップ判定
+  const rawPt = screenToPdf(x, y);
+  const snap = findSnapPoint(rawPt, 20);
+  const pdfPt = snap || rawPt;
+  // 画面位置を再計算(スナップしたら吸着)
+  const sp = pdfToScreen(pdfPt.x, pdfPt.y);
+  state.pickState = {
+    screenX: sp.x, screenY: sp.y,
+    pdfPt,
+    snapped: !!snap
+  };
+  showPickedMarker();
+  showLoupeAt(sp.x, sp.y);
+  showConfirmBar();
+  if (navigator.vibrate) navigator.vibrate(50);
+}
+
+// 仮配置マーカーを表示
+let pickedMarkerEl = null;
+function showPickedMarker() {
+  if (!pickedMarkerEl) {
+    pickedMarkerEl = document.createElement('div');
+    pickedMarkerEl.className = 'picked-marker';
+    wrap.appendChild(pickedMarkerEl);
+  }
+  const ps = state.pickState;
+  pickedMarkerEl.style.left = ps.screenX + 'px';
+  pickedMarkerEl.style.top = ps.screenY + 'px';
+  pickedMarkerEl.style.display = 'block';
+  pickedMarkerEl.style.borderColor = ps.snapped ? '#4caf50' : '#ffc107';
+}
+function hidePickedMarker() {
+  if (pickedMarkerEl) pickedMarkerEl.style.display = 'none';
+}
+
+function showConfirmBar() {
+  document.getElementById('confirm-bar').classList.add('show');
+}
+function hideConfirmBar() {
+  document.getElementById('confirm-bar').classList.remove('show');
+}
+
+// ルーペを指定の画面座標(wrap基準)に表示
+function showLoupeAt(px, py) {
+  const rect = wrap.getBoundingClientRect();
+  const absX = px + rect.left;
+  const absY = py + rect.top;
+  showLoupe(absX, absY);
+}
+
+// マウス対応
+let mouseDown = null;
+function handleMouseDown(e) {
+  mouseDown = { x: e.clientX, y: e.clientY, panX: state.panX, panY: state.panY, time: Date.now() };
+  if (state.tool === 'scale') {
+    showLoupe(e.clientX, e.clientY);
+    state.longPress = setTimeout(() => handleLongPress(e.clientX, e.clientY), 500);
+  } else if (state.tool === 'pen') {
+    state.penStroke = [screenToPdf(e.clientX, e.clientY)];
+  }
+}
+function handleMouseMove(e) {
+  if (!mouseDown) return;
+  const dx = e.clientX - mouseDown.x, dy = e.clientY - mouseDown.y;
+  if (state.tool === 'scale') {
+    showLoupe(e.clientX, e.clientY);
+    if (state.longPress && Math.hypot(dx, dy) > 5) {
+      cancelLongPress();
+      hideLoupe();
+      mouseDown.panning = true;
+    }
+    if (mouseDown.panning) {
+      state.panX = mouseDown.panX + dx;
+      state.panY = mouseDown.panY + dy;
+      renderScene();
+    }
+  } else if (state.tool === 'pen' && state.penStroke) {
+    state.penStroke.push(screenToPdf(e.clientX, e.clientY));
+    renderScene();
+  } else if (Math.hypot(dx, dy) > 5) {
+    state.panX = mouseDown.panX + dx;
+    state.panY = mouseDown.panY + dy;
+    mouseDown.panning = true;
+    renderScene();
+  }
+}
+function handleMouseUp(e) {
+  cancelLongPress();
+  if (state.tool !== 'scale') hideLoupe();
+  if (!mouseDown) return;
+  const dt = Date.now() - mouseDown.time;
+  const dx = e.clientX - mouseDown.x, dy = e.clientY - mouseDown.y;
+  if (state.tool === 'pen' && state.penStroke) {
+    finalizePenStroke();
+  } else if (!mouseDown.panning && dt < 300 && Math.hypot(dx, dy) < 5) {
+    handleTap(e.clientX, e.clientY);
+  }
+  mouseDown = null;
+  ensurePdfResolution();
+}
+
+// ホイールでズーム
+wrap.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const rect = wrap.getBoundingClientRect();
+  const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
+  const factor = e.deltaY < 0 ? 1.1 : 0.9;
+  const newZoom = Math.max(0.05, Math.min(20, state.viewZoom * factor));
+  state.panX = cx - (cx - state.panX) * (newZoom / state.viewZoom);
+  state.panY = cy - (cy - state.panY) * (newZoom / state.viewZoom);
+  state.viewZoom = newZoom;
+  renderScene();
+  ensurePdfResolution();
+}, {passive: false});
+
+// ===== ペンストローク確定 =====
+function finalizePenStroke() {
+  const pts = state.penStroke;
+  state.penStroke = null;
+  if (!pts || pts.length < 2) return;
+  const base = { color: state.curColor, lineType: state.curLineType, lineWidth: state.curLineWidth };
+  if (state.straighten) {
+    const line = straightenStroke(pts);
+    if (line) state.shapes.push({type:'line', ...line, ...base});
+  } else {
+    state.shapes.push({type:'freehand', points: pts, ...base});
+  }
+  renderScene();
+}
+
+function straightenStroke(points) {
+  if (points.length < 2) return null;
+  const p0 = points[0], pn = points[points.length-1];
+  let dx = pn.x - p0.x, dy = pn.y - p0.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 2) return null;
+  let angle = Math.atan2(dy, dx) * 180 / Math.PI;
+  const snaps = [-180, -135, -90, -45, 0, 45, 90, 135, 180];
+  const tol = 5;
+  for (const s of snaps) {
+    if (Math.abs(angle - s) < tol) {
+      const rad = s * Math.PI / 180;
+      return { a: p0, b: { x: p0.x + Math.cos(rad)*len, y: p0.y + Math.sin(rad)*len } };
+    }
+  }
+  return { a: p0, b: pn };
+}
+
+// ===== タップ処理 =====
+function handleTap(sx, sy) {
+  const p = screenToPdf(sx, sy);
+  // 長さ線の方向タップ
+  if (state.tool === 'line-len' && state.pendingLineLength && state.tempPoints.length === 1) {
+    const start = state.tempPoints[0];
+    const dx = p.x - start.x, dy = p.y - start.y;
+    const len = Math.hypot(dx, dy);
+    if (len < 1e-6) { statusEl.textContent = '同じ位置です'; return; }
+    let ux = dx/len, uy = dy/len;
+    // 角度スナップ(0/45/90/135度近辺)
+    let angle = Math.atan2(uy, ux) * 180 / Math.PI;
+    const snaps = [-180, -135, -90, -45, 0, 45, 90, 135, 180];
+    for (const s of snaps) {
+      if (Math.abs(angle - s) < 7) {
+        const rad = s * Math.PI / 180;
+        ux = Math.cos(rad); uy = Math.sin(rad);
+        break;
+      }
+    }
+    const distPt = state.pendingLineLength * state.scale.pxPerMm;
+    const end = { x: start.x + ux*distPt, y: start.y + uy*distPt };
+    state.shapes.push({
+      type:'line', a: start, b: end,
+      color: state.curColor, lineType: state.curLineType, lineWidth: state.curLineWidth
+    });
+    state.tempPoints = [];
+    state.pendingLineLength = null;
+    statusEl.textContent = `長さ ${formatDim(state.shapes[state.shapes.length-1] ? Math.hypot(end.x-start.x, end.y-start.y) / state.scale.pxPerMm : 0)} の線を追加`;
+    renderScene();
+    return;
+  }
+  switch (state.tool) {
+    case 'corner': handleShapePick(p, 'corner'); break;
+    case 'fillet': handleShapePick(p, 'fillet'); break;
+    case 'select': handleSelect(p); break;
+    case 'text': handleTextTap(p); break;
+    case 'rotate-line': handleRotateLineTap(p); break;
+  }
+}
+
+function handleRotateLineTap(p) {
+  const thresh = 15 / state.viewZoom;
+  const idx = findNearestLine(p, thresh);
+  if (idx === null) { statusEl.textContent = '線が見つかりません'; return; }
+  const L = state.shapes[idx];
+  const curAngle = Math.atan2(L.b.y - L.a.y, L.b.x - L.a.x) * 180 / Math.PI;
+  const lenMm = state.scale ? (Math.hypot(L.b.x-L.a.x, L.b.y-L.a.y) / state.scale.pxPerMm).toFixed(0) : '?';
+  state.pendingRotateLine = idx;
+  document.getElementById('rotate-info').textContent =
+    `現在: ${curAngle.toFixed(1)}° (長さ ${lenMm}mm)`;
+  document.getElementById('rotate-angle-input').value = curAngle.toFixed(1);
+  document.getElementById('rotate-modal').classList.add('show');
+  setTimeout(() => document.getElementById('rotate-angle-input').focus(), 100);
+}
+
+function handleDimTap(p) {
+  if (!state.scale) { statusEl.textContent = '⚠ 先に縮尺設定'; return; }
+  state.tempPoints.push(p);
+  if (state.tempPoints.length === 1) {
+    statusEl.textContent = '2点目をタップ';
+  } else if (state.tempPoints.length === 2) {
+    statusEl.textContent = '寸法線を引く位置をタップ';
+  } else if (state.tempPoints.length === 3) {
+    const [p1, p2, off] = state.tempPoints;
+    const dim = buildDim(p1, p2, off);
+    if (dim) {
+      const mm = dim.distance / state.scale.pxPerMm;
+      state.shapes.push({
+        type:'dim', p1, p2,
+        dimStart: dim.dimStart, dimEnd: dim.dimEnd,
+        helper1End: dim.helper1End, helper2End: dim.helper2End,
+        value: mm, color: state.curColor,
+        lineWidth: state.curLineWidth, fontSize: state.curFontSize
+      });
+      statusEl.textContent = `寸法 ${formatDim(mm)} 追加`;
+    }
+    state.tempPoints = [];
+  }
+  renderScene();
+}
+
+function buildDim(p1, p2, offsetPt) {
+  const dx = p2.x - p1.x, dy = p2.y - p1.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 1e-6) return null;
+  const ux = dx/len, uy = dy/len;
+  const nx = -uy, ny = ux;
+  const opx = offsetPt.x - p1.x, opy = offsetPt.y - p1.y;
+  const offset = opx * nx + opy * ny;
+  const dimStart = { x: p1.x + nx*offset, y: p1.y + ny*offset };
+  const dimEnd   = { x: p2.x + nx*offset, y: p2.y + ny*offset };
+  const extra = 3 * Math.sign(offset);
+  const helper1End = { x: p1.x + nx*(offset + extra), y: p1.y + ny*(offset + extra) };
+  const helper2End = { x: p2.x + nx*(offset + extra), y: p2.y + ny*(offset + extra) };
+  return { dimStart, dimEnd, helper1End, helper2End, distance: len };
+}
+
+function handleTextTap(p) {
+  state.pendingTextPos = p;
+  document.getElementById('text-modal').classList.add('show');
+  setTimeout(() => document.getElementById('text-input').focus(), 100);
+}
+
+function distToLine(p, line) {
+  const {a, b} = line;
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const len2 = dx*dx + dy*dy;
+  if (len2 < 1e-9) return Math.hypot(p.x-a.x, p.y-a.y);
+  let t = ((p.x-a.x)*dx + (p.y-a.y)*dy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(p.x - (a.x + t*dx), p.y - (a.y + t*dy));
+}
+
+function findNearestLine(p, threshold) {
+  let best = null, bestD = threshold;
+  for (let i = 0; i < state.shapes.length; i++) {
+    const s = state.shapes[i];
+    if (s.type !== 'line') continue;
+    const d = distToLine(p, s);
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  return best;
+}
+
+function handleShapePick(p, mode) {
+  const thresh = 15 / state.viewZoom;
+  const idx = findNearestLine(p, thresh);
+  if (idx === null) { statusEl.textContent = '線が見つかりません'; return; }
+  state.tempPoints.push(idx);
+  if (state.tempPoints.length === 1) {
+    statusEl.textContent = '1本目選択。2本目をタップ';
+  } else {
+    const i1 = state.tempPoints[0], i2 = state.tempPoints[1];
+    state.tempPoints = [];
+    if (i1 === i2) { statusEl.textContent = '同じ線です'; return; }
+    if (mode === 'corner') applyCorner(i1, i2);
+    else if (mode === 'fillet') {
+      state.pendingFilletLines = [i1, i2];
+      document.getElementById('fillet-modal').classList.add('show');
+    }
+  }
+  renderScene();
+}
+
+function lineIntersect(L1, L2) {
+  const x1=L1.a.x, y1=L1.a.y, x2=L1.b.x, y2=L1.b.y;
+  const x3=L2.a.x, y3=L2.a.y, x4=L2.b.x, y4=L2.b.y;
+  const denom = (x1-x2)*(y3-y4) - (y1-y2)*(x3-x4);
+  if (Math.abs(denom) < 1e-9) return null;
+  const t = ((x1-x3)*(y3-y4) - (y1-y3)*(x3-x4)) / denom;
+  return { x: x1 + t*(x2-x1), y: y1 + t*(y2-y1) };
+}
+
+function farEnd(line, ip) {
+  const d1 = Math.hypot(line.a.x-ip.x, line.a.y-ip.y);
+  const d2 = Math.hypot(line.b.x-ip.x, line.b.y-ip.y);
+  return d1 > d2 ? line.a : line.b;
+}
+
+function applyCorner(i1, i2) {
+  const L1 = state.shapes[i1], L2 = state.shapes[i2];
+  const ip = lineIntersect(L1, L2);
+  if (!ip) { statusEl.textContent = '平行で交点なし'; return; }
+  const e1 = farEnd(L1, ip), e2 = farEnd(L2, ip);
+  state.shapes[i1] = {...L1, type:'line', a: e1, b: ip};
+  state.shapes[i2] = {...L2, type:'line', a: e2, b: ip};
+  statusEl.textContent = 'コーナー処理完了';
+}
+
+function applyFillet(i1, i2, rMm) {
+  const L1 = state.shapes[i1], L2 = state.shapes[i2];
+  const ip = lineIntersect(L1, L2);
+  if (!ip) { statusEl.textContent = '平行で交点なし'; return; }
+  if (!state.scale) { statusEl.textContent = '⚠ 縮尺未設定'; return; }
+  const R = rMm * state.scale.pxPerMm;
+  function di(line, ip) {
+    const d1 = Math.hypot(line.a.x-ip.x, line.a.y-ip.y);
+    const e = d1 > Math.hypot(line.b.x-ip.x, line.b.y-ip.y) ? line.a : line.b;
+    const vx = e.x - ip.x, vy = e.y - ip.y;
+    const len = Math.hypot(vx, vy);
+    return { x: vx/len, y: vy/len, far: e, len };
+  }
+  const d1 = di(L1, ip), d2 = di(L2, ip);
+  const dot = d1.x*d2.x + d1.y*d2.y;
+  const angle = Math.acos(Math.max(-1, Math.min(1, dot)));
+  if (angle < 1e-3 || angle > Math.PI - 1e-3) {
+    statusEl.textContent = '角度が浅すぎてR取れません'; return;
+  }
+  const tDist = R / Math.tan(angle/2);
+  if (tDist > d1.len || tDist > d2.len) {
+    const maxR = Math.min(d1.len, d2.len) * Math.tan(angle/2) / state.scale.pxPerMm;
+    statusEl.textContent = `Rが大きすぎ(最大 ${Math.round(maxR)}mm)`;
+    return;
+  }
+  const tp1 = { x: ip.x + d1.x*tDist, y: ip.y + d1.y*tDist };
+  const tp2 = { x: ip.x + d2.x*tDist, y: ip.y + d2.y*tDist };
+  const bx = d1.x + d2.x, by = d1.y + d2.y;
+  const blen = Math.hypot(bx, by);
+  const cDist = R / Math.sin(angle/2);
+  const center = { x: ip.x + bx/blen*cDist, y: ip.y + by/blen*cDist };
+  let sa = Math.atan2(tp1.y - center.y, tp1.x - center.x);
+  let ea = Math.atan2(tp2.y - center.y, tp2.x - center.x);
+  let diff = ea - sa;
+  while (diff > Math.PI) diff -= 2*Math.PI;
+  while (diff < -Math.PI) diff += 2*Math.PI;
+  const counter = diff < 0;
+  const style = { color: L1.color, lineType: L1.lineType, lineWidth: L1.lineWidth };
+  state.shapes[i1] = {...L1, type:'line', a: d1.far, b: tp1};
+  state.shapes[i2] = {...L2, type:'line', a: d2.far, b: tp2};
+  state.shapes.push({type:'arc', center, radius: R, startAngle: sa, endAngle: ea, counter, ...style});
+  statusEl.textContent = `フィレット R${rMm}mm 完了`;
+}
+
+function handleSelect(p) {
+  const thresh = 15 / state.viewZoom;
+  let best = null, bestD = thresh;
+  for (let i = 0; i < state.shapes.length; i++) {
+    const s = state.shapes[i];
+    let d = Infinity;
+    if (s.type === 'line') d = distToLine(p, s);
+    else if (s.type === 'freehand') {
+      for (let j = 0; j < s.points.length-1; j++) {
+        d = Math.min(d, distToLine(p, {a: s.points[j], b: s.points[j+1]}));
+      }
+    } else if (s.type === 'dim') d = distToLine(p, {a: s.dimStart, b: s.dimEnd});
+    else if (s.type === 'arc') d = Math.abs(Math.hypot(p.x-s.center.x, p.y-s.center.y) - s.radius);
+    else if (s.type === 'circle') d = Math.abs(Math.hypot(p.x-s.center.x, p.y-s.center.y) - s.radius);
+    else if (s.type === 'ellipse') {
+      // 楕円の近似判定: 回転を逆変換してから単位円距離
+      const cos = Math.cos(-s.rotation||0), sin = Math.sin(-s.rotation||0);
+      const lx = (p.x-s.center.x)*cos - (p.y-s.center.y)*sin;
+      const ly = (p.x-s.center.x)*sin + (p.y-s.center.y)*cos;
+      // 楕円表面までの近似距離(完全な距離は計算重いので簡易)
+      const nx = lx / s.radiusA, ny = ly / s.radiusB;
+      const r = Math.hypot(nx, ny);
+      d = Math.abs(r - 1) * Math.min(s.radiusA, s.radiusB);
+    }
+    else if (s.type === 'rect') {
+      // 矩形の4辺それぞれへの距離の最小
+      const x1=s.pos.x, y1=s.pos.y, x2=x1+s.w, y2=y1+s.h;
+      d = Math.min(
+        distToLine(p, {a:{x:x1,y:y1}, b:{x:x2,y:y1}}),
+        distToLine(p, {a:{x:x2,y:y1}, b:{x:x2,y:y2}}),
+        distToLine(p, {a:{x:x2,y:y2}, b:{x:x1,y:y2}}),
+        distToLine(p, {a:{x:x1,y:y2}, b:{x:x1,y:y1}})
+      );
+    }
+    else if (s.type === 'text') {
+      const fs = s.fontSize || 12;
+      if (p.x >= s.pos.x - 5 && p.x <= s.pos.x + 100 &&
+          p.y >= s.pos.y - 5 && p.y <= s.pos.y + fs * 2) d = 0;
+    }
+    else if (s.type === 'midpoint') {
+      d = Math.hypot(p.x - s.pos.x, p.y - s.pos.y);
+    }
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  if (best !== null) {
+    if (confirm('この図形を削除しますか?')) {
+      state.shapes.splice(best, 1);
+      renderScene();
+    }
+  }
+}
+
+// ===== モーダル =====
+function showScaleModal() {
+  document.getElementById('scale-modal').classList.add('show');
+  setTimeout(() => document.getElementById('scale-input').focus(), 100);
+}
+// 確定ボタン: 仮配置点を実際の値として確定し、次のステップへ
+document.getElementById('confirm-ok').addEventListener('click', () => {
+  if (!state.pickState) return;
+  const pt = state.pickState.pdfPt;
+  hidePickedMarker();
+  hideConfirmBar();
+  state.pickState = null;
+  if (state.tool === 'scale') {
+    state.tempPoints.push(pt);
+    if (state.tempPoints.length === 1) {
+      statusEl.textContent = '✓ 1点目確定。2点目を長押し';
+      if (navigator.vibrate) navigator.vibrate(50);
+    } else {
+      state.pendingScalePoints = [state.tempPoints[0], pt];
+      state.tempPoints = [];
+      if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
+      showScaleModal();
+    }
+  } else if (state.tool === 'dim') {
+    if (!state.scale) { statusEl.textContent = '⚠ 先に縮尺設定'; return; }
+    state.tempPoints.push(pt);
+    if (state.tempPoints.length === 1) {
+      statusEl.textContent = '2点目を長押し';
+    } else if (state.tempPoints.length === 2) {
+      statusEl.textContent = '寸法線位置を長押し';
+    } else if (state.tempPoints.length === 3) {
+      const [p1, p2, off] = state.tempPoints;
+      const dim = buildDim(p1, p2, off);
+      if (dim) {
+        const mm = dim.distance / state.scale.pxPerMm;
+        state.shapes.push({
+          type:'dim', p1, p2,
+          dimStart: dim.dimStart, dimEnd: dim.dimEnd,
+          helper1End: dim.helper1End, helper2End: dim.helper2End,
+          value: mm, color: state.curColor,
+          lineWidth: state.curLineWidth, fontSize: state.curFontSize
+        });
+        statusEl.textContent = `寸法 ${formatDim(mm)} 追加`;
+      }
+      state.tempPoints = [];
+    }
+  } else if (state.tool === 'line-len') {
+    if (!state.scale) { statusEl.textContent = '⚠ 先に縮尺設定'; return; }
+    state.tempPoints.push(pt);
+    showLengthModal();
+  } else if (state.tool === 'midpoint') {
+    state.tempPoints.push(pt);
+    if (state.tempPoints.length === 1) {
+      statusEl.textContent = '✓ 1点目確定。2点目を長押し';
+    } else if (state.tempPoints.length === 2) {
+      const [a, b] = state.tempPoints;
+      const mid = { x: (a.x+b.x)/2, y: (a.y+b.y)/2 };
+      state.shapes.push({
+        type: 'midpoint', pos: mid, color: state.curColor
+      });
+      if (state.snapGrid) state.snapGrid.add(mid);
+      else { state.snapGrid = new PointGrid(20); state.snapGrid.add(mid); }
+      statusEl.textContent = '中点を追加(以降スナップ可)';
+      state.tempPoints = [];
+    }
+  } else if (state.tool === 'circle') {
+    state.tempPoints.push(pt);
+    if (state.tempPoints.length === 1) {
+      // 中心が決まった → モード選択
+      document.getElementById('circle-mode-modal').classList.add('show');
+    } else if (state.tempPoints.length === 2) {
+      // 点指定モード: 周上の点
+      const center = state.tempPoints[0];
+      const onCircle = pt;
+      const r = Math.hypot(onCircle.x - center.x, onCircle.y - center.y);
+      state.shapes.push({
+        type:'circle', center, radius: r,
+        color: state.curColor, lineType: state.curLineType, lineWidth: state.curLineWidth
+      });
+      state.tempPoints = [];
+      const rMm = state.scale ? (r / state.scale.pxPerMm).toFixed(0) + 'mm' : '';
+      statusEl.textContent = `円を追加 ${rMm}`;
+    }
+  } else if (state.tool === 'rect') {
+    state.tempPoints.push(pt);
+    if (state.tempPoints.length === 1) {
+      document.getElementById('rect-mode-modal').classList.add('show');
+    } else if (state.tempPoints.length === 2) {
+      // 対角2点
+      const a = state.tempPoints[0], b = pt;
+      const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
+      const w = Math.abs(b.x - a.x), h = Math.abs(b.y - a.y);
+      state.shapes.push({
+        type:'rect', pos:{x,y}, w, h,
+        color: state.curColor, lineType: state.curLineType, lineWidth: state.curLineWidth
+      });
+      state.tempPoints = [];
+      statusEl.textContent = '矩形を追加';
+    }
+  } else if (state.tool === 'ellipse') {
+    state.tempPoints.push(pt);
+    if (state.tempPoints.length === 1) {
+      document.getElementById('ellipse-modal').classList.add('show');
+      setTimeout(() => document.getElementById('ellipse-a-input').focus(), 100);
+    }
+  }
+  renderScene();
+});
+
+document.getElementById('confirm-cancel').addEventListener('click', () => {
+  hidePickedMarker();
+  hideConfirmBar();
+  hideLoupe();
+  state.pickState = null;
+  statusEl.textContent = '点指定をキャンセル';
+});
+
+function showLengthModal() {
+  document.getElementById('length-modal').classList.add('show');
+  setTimeout(() => document.getElementById('length-input').focus(), 100);
+}
+document.getElementById('length-ok').addEventListener('click', () => {
+  const mm = parseFloat(document.getElementById('length-input').value);
+  if (!mm || mm <= 0) { alert('正の数を入力'); return; }
+  state.pendingLineLength = mm;
+  document.getElementById('length-modal').classList.remove('show');
+  statusEl.textContent = '方向をタップ(線が伸びる先)';
+});
+document.getElementById('length-cancel').addEventListener('click', () => {
+  document.getElementById('length-modal').classList.remove('show');
+  document.getElementById('length-input').value = '';
+  state.tempPoints = [];
+  state.pendingLineLength = null;
+  statusEl.textContent = '長さ線をキャンセル';
+});
+
+document.getElementById('scale-ok').addEventListener('click', () => {
+  const mm = parseFloat(document.getElementById('scale-input').value);
+  if (!mm || mm <= 0) { alert('正の数を入力'); return; }
+  const [p1, p2] = state.pendingScalePoints;
+  const pxDist = Math.hypot(p2.x-p1.x, p2.y-p1.y);
+  state.scale = { pxPerMm: pxDist / mm };
+  document.getElementById('scale-info').textContent =
+    `${mm}mm 基準 (1mm=${state.scale.pxPerMm.toFixed(3)}pt)`;
+  document.getElementById('scale-modal').classList.remove('show');
+  document.getElementById('scale-input').value = '';
+  state.pendingScalePoints = null;
+  statusEl.textContent = '縮尺設定完了';
+  renderScene();
+});
+document.getElementById('scale-cancel').addEventListener('click', () => {
+  document.getElementById('scale-modal').classList.remove('show');
+  state.pendingScalePoints = null;
+});
+
+document.getElementById('fillet-ok').addEventListener('click', () => {
+  const r = parseFloat(document.getElementById('fillet-input').value);
+  if (!r || r <= 0) { alert('正の数を入力'); return; }
+  const [i1, i2] = state.pendingFilletLines;
+  applyFillet(i1, i2, r);
+  document.getElementById('fillet-modal').classList.remove('show');
+  state.pendingFilletLines = null;
+  renderScene();
+});
+document.getElementById('fillet-cancel').addEventListener('click', () => {
+  document.getElementById('fillet-modal').classList.remove('show');
+  state.pendingFilletLines = null;
+});
+
+// 円: 半径入力
+document.getElementById('circle-by-radius').addEventListener('click', () => {
+  document.getElementById('circle-mode-modal').classList.remove('show');
+  if (!state.scale) {
+    statusEl.textContent = '⚠ 先に縮尺設定が必要';
+    state.tempPoints = [];
+    return;
+  }
+  document.getElementById('circle-radius-modal').classList.add('show');
+  setTimeout(() => document.getElementById('circle-radius-input').focus(), 100);
+});
+document.getElementById('circle-by-point').addEventListener('click', () => {
+  document.getElementById('circle-mode-modal').classList.remove('show');
+  statusEl.textContent = '周上の点を長押しで指定';
+});
+document.getElementById('circle-mode-cancel').addEventListener('click', () => {
+  document.getElementById('circle-mode-modal').classList.remove('show');
+  state.tempPoints = [];
+});
+document.getElementById('circle-radius-ok').addEventListener('click', () => {
+  const rMm = parseFloat(document.getElementById('circle-radius-input').value);
+  if (!rMm || rMm <= 0) { alert('正の数を入力'); return; }
+  const center = state.tempPoints[0];
+  const r = rMm * state.scale.pxPerMm;
+  state.shapes.push({
+    type:'circle', center, radius: r,
+    color: state.curColor, lineType: state.curLineType, lineWidth: state.curLineWidth
+  });
+  state.tempPoints = [];
+  document.getElementById('circle-radius-modal').classList.remove('show');
+  document.getElementById('circle-radius-input').value = '';
+  statusEl.textContent = `円(半径${rMm}mm)追加`;
+  renderScene();
+});
+document.getElementById('circle-radius-cancel').addEventListener('click', () => {
+  document.getElementById('circle-radius-modal').classList.remove('show');
+  state.tempPoints = [];
+});
+
+// 矩形: サイズ入力
+document.getElementById('rect-by-size').addEventListener('click', () => {
+  document.getElementById('rect-mode-modal').classList.remove('show');
+  if (!state.scale) {
+    statusEl.textContent = '⚠ 先に縮尺設定が必要';
+    state.tempPoints = [];
+    return;
+  }
+  document.getElementById('rect-size-modal').classList.add('show');
+  setTimeout(() => document.getElementById('rect-w-input').focus(), 100);
+});
+document.getElementById('rect-by-point').addEventListener('click', () => {
+  document.getElementById('rect-mode-modal').classList.remove('show');
+  statusEl.textContent = '対角の点を長押しで指定';
+});
+document.getElementById('rect-mode-cancel').addEventListener('click', () => {
+  document.getElementById('rect-mode-modal').classList.remove('show');
+  state.tempPoints = [];
+});
+document.getElementById('rect-size-ok').addEventListener('click', () => {
+  const wMm = parseFloat(document.getElementById('rect-w-input').value);
+  const hMm = parseFloat(document.getElementById('rect-h-input').value);
+  if (!wMm || wMm <= 0 || !hMm || hMm <= 0) { alert('正の数を入力'); return; }
+  const corner = state.tempPoints[0];
+  const w = wMm * state.scale.pxPerMm;
+  const h = hMm * state.scale.pxPerMm;
+  state.shapes.push({
+    type:'rect', pos: corner, w, h,
+    color: state.curColor, lineType: state.curLineType, lineWidth: state.curLineWidth
+  });
+  state.tempPoints = [];
+  document.getElementById('rect-size-modal').classList.remove('show');
+  document.getElementById('rect-w-input').value = '';
+  document.getElementById('rect-h-input').value = '';
+  statusEl.textContent = `矩形 ${wMm}×${hMm}mm 追加`;
+  renderScene();
+});
+document.getElementById('rect-size-cancel').addEventListener('click', () => {
+  document.getElementById('rect-size-modal').classList.remove('show');
+  state.tempPoints = [];
+});
+
+// 楕円
+document.getElementById('ellipse-ok').addEventListener('click', () => {
+  const aMm = parseFloat(document.getElementById('ellipse-a-input').value);
+  const bMm = parseFloat(document.getElementById('ellipse-b-input').value);
+  const rotDeg = parseFloat(document.getElementById('ellipse-rot-input').value) || 0;
+  if (!aMm || aMm <= 0 || !bMm || bMm <= 0) { alert('正の数を入力'); return; }
+  if (!state.scale) { alert('縮尺未設定'); return; }
+  const center = state.tempPoints[0];
+  state.shapes.push({
+    type:'ellipse', center,
+    radiusA: aMm * state.scale.pxPerMm,
+    radiusB: bMm * state.scale.pxPerMm,
+    rotation: rotDeg * Math.PI / 180,
+    color: state.curColor, lineType: state.curLineType, lineWidth: state.curLineWidth
+  });
+  state.tempPoints = [];
+  document.getElementById('ellipse-modal').classList.remove('show');
+  document.getElementById('ellipse-a-input').value = '';
+  document.getElementById('ellipse-b-input').value = '';
+  statusEl.textContent = `楕円 ${aMm}×${bMm}mm 追加`;
+  renderScene();
+});
+document.getElementById('ellipse-cancel').addEventListener('click', () => {
+  document.getElementById('ellipse-modal').classList.remove('show');
+  state.tempPoints = [];
+});
+
+// 角度変更モーダル
+document.getElementById('rotate-ok').addEventListener('click', () => {
+  const newAngleDeg = parseFloat(document.getElementById('rotate-angle-input').value);
+  if (isNaN(newAngleDeg)) { alert('数値を入力'); return; }
+  const pivot = document.querySelector('input[name="rotate-pivot"]:checked').value;
+  const idx = state.pendingRotateLine;
+  if (idx == null) return;
+  const L = state.shapes[idx];
+  const len = Math.hypot(L.b.x - L.a.x, L.b.y - L.a.y);
+  const rad = newAngleDeg * Math.PI / 180;
+  // 軸: a固定 / b固定 / mid固定 で再構成
+  let newA, newB;
+  if (pivot === 'a') {
+    newA = L.a;
+    newB = { x: L.a.x + Math.cos(rad)*len, y: L.a.y + Math.sin(rad)*len };
+  } else if (pivot === 'b') {
+    newB = L.b;
+    newA = { x: L.b.x - Math.cos(rad)*len, y: L.b.y - Math.sin(rad)*len };
+  } else {
+    const mid = { x: (L.a.x+L.b.x)/2, y: (L.a.y+L.b.y)/2 };
+    const half = len / 2;
+    newA = { x: mid.x - Math.cos(rad)*half, y: mid.y - Math.sin(rad)*half };
+    newB = { x: mid.x + Math.cos(rad)*half, y: mid.y + Math.sin(rad)*half };
+  }
+  state.shapes[idx] = {...L, a: newA, b: newB};
+  state.pendingRotateLine = null;
+  document.getElementById('rotate-modal').classList.remove('show');
+  statusEl.textContent = `角度を ${newAngleDeg}° に変更`;
+  renderScene();
+});
+document.getElementById('rotate-cancel').addEventListener('click', () => {
+  state.pendingRotateLine = null;
+  document.getElementById('rotate-modal').classList.remove('show');
+});
+
+document.getElementById('text-ok').addEventListener('click', () => {
+  const text = document.getElementById('text-input').value;
+  if (text && state.pendingTextPos) {
+    state.shapes.push({
+      type:'text', pos: state.pendingTextPos, text,
+      color: state.curColor, fontSize: state.curFontSize
+    });
+  }
+  document.getElementById('text-modal').classList.remove('show');
+  document.getElementById('text-input').value = '';
+  state.pendingTextPos = null;
+  renderScene();
+});
+document.getElementById('text-cancel').addEventListener('click', () => {
+  document.getElementById('text-modal').classList.remove('show');
+  document.getElementById('text-input').value = '';
+  state.pendingTextPos = null;
+});
+
+// ===== ボタン =====
+document.getElementById('undo-btn').addEventListener('click', () => {
+  if (state.shapes.length > 0) { state.shapes.pop(); renderScene(); }
+});
+document.getElementById('clear-btn').addEventListener('click', () => {
+  if (state.shapes.length === 0) return;
+  if (confirm('すべての描画を削除しますか?')) { state.shapes = []; renderScene(); }
+});
+document.getElementById('zoom-fit').addEventListener('click', () => {
+  if (state.pdfDoc) fitToScreen();
+});
+
+// ===== PDF出力 =====
+function hexToRgb(hex) {
+  const m = hex.replace('#','').match(/.{2}/g);
+  return PDFLib.rgb(parseInt(m[0],16)/255, parseInt(m[1],16)/255, parseInt(m[2],16)/255);
+}
+const PDFLIB_DASH = {
+  solid: [], dashed: [6, 3], dashdot: [8, 3, 1, 3], dotted: [1, 3]
+};
+
+document.getElementById('export-btn').addEventListener('click', async () => {
+  if (!state.pdfBytes) { alert('PDFを開いてください'); return; }
+  statusEl.textContent = 'PDF生成中...';
+  await new Promise(r => setTimeout(r, 50));
+  try {
+    const pdfDoc = await PDFLib.PDFDocument.load(state.pdfBytes.slice(0));
+    const page = pdfDoc.getPages()[0];
+    const { height } = page.getSize();
+    const drawingsJson = JSON.stringify({version: 3, scale: state.scale, shapes: state.shapes});
+
+    for (const s of state.shapes) {
+      const color = hexToRgb(s.color || '#d32f2f');
+      const lw = s.lineWidth || 1.2;
+      const dash = PDFLIB_DASH[s.lineType || 'solid'];
+      if (s.type === 'line') {
+        page.drawLine({
+          start: { x: s.a.x, y: height - s.a.y },
+          end:   { x: s.b.x, y: height - s.b.y },
+          thickness: lw, color,
+          dashArray: dash.length ? dash : undefined
+        });
+      } else if (s.type === 'freehand') {
+        const pts = s.points;
+        for (let i = 0; i < pts.length - 1; i++) {
+          page.drawLine({
+            start: { x: pts[i].x, y: height - pts[i].y },
+            end:   { x: pts[i+1].x, y: height - pts[i+1].y },
+            thickness: lw, color
+          });
+        }
+      } else if (s.type === 'arc') {
+        const steps = 24;
+        let sa = s.startAngle, ea = s.endAngle;
+        let diff = ea - sa;
+        if (s.counter) { while (diff > 0) diff -= 2*Math.PI; }
+        else { while (diff < 0) diff += 2*Math.PI; }
+        for (let i = 0; i < steps; i++) {
+          const a1 = sa + diff * i / steps;
+          const a2 = sa + diff * (i+1) / steps;
+          const p1 = { x: s.center.x + Math.cos(a1)*s.radius, y: s.center.y + Math.sin(a1)*s.radius };
+          const p2 = { x: s.center.x + Math.cos(a2)*s.radius, y: s.center.y + Math.sin(a2)*s.radius };
+          page.drawLine({
+            start: { x: p1.x, y: height - p1.y },
+            end:   { x: p2.x, y: height - p2.y },
+            thickness: lw, color
+          });
+        }
+      } else if (s.type === 'circle') {
+        page.drawCircle({
+          x: s.center.x, y: height - s.center.y,
+          size: s.radius, borderWidth: lw, borderColor: color,
+          color: PDFLib.rgb(0,0,0), opacity: 0
+        });
+      } else if (s.type === 'rect') {
+        page.drawRectangle({
+          x: s.pos.x, y: height - s.pos.y - s.h,
+          width: s.w, height: s.h,
+          borderWidth: lw, borderColor: color,
+          color: PDFLib.rgb(0,0,0), opacity: 0
+        });
+      } else if (s.type === 'ellipse') {
+        // 楕円は多角形近似
+        const steps = 48;
+        const cos = Math.cos(s.rotation||0), sin = Math.sin(s.rotation||0);
+        const pts = [];
+        for (let i = 0; i <= steps; i++) {
+          const t = i / steps * Math.PI * 2;
+          const lx = Math.cos(t) * s.radiusA;
+          const ly = Math.sin(t) * s.radiusB;
+          pts.push({
+            x: s.center.x + lx*cos - ly*sin,
+            y: s.center.y + lx*sin + ly*cos
+          });
+        }
+        for (let i = 0; i < steps; i++) {
+          page.drawLine({
+            start: { x: pts[i].x, y: height - pts[i].y },
+            end:   { x: pts[i+1].x, y: height - pts[i+1].y },
+            thickness: lw, color
+          });
+        }
+      } else if (s.type === 'dim') {
+        page.drawLine({
+          start: { x: s.dimStart.x, y: height - s.dimStart.y },
+          end:   { x: s.dimEnd.x,   y: height - s.dimEnd.y },
+          thickness: lw, color
+        });
+        page.drawLine({
+          start: { x: s.p1.x, y: height - s.p1.y },
+          end:   { x: s.helper1End.x, y: height - s.helper1End.y },
+          thickness: lw * 0.7, color
+        });
+        page.drawLine({
+          start: { x: s.p2.x, y: height - s.p2.y },
+          end:   { x: s.helper2End.x, y: height - s.helper2End.y },
+          thickness: lw * 0.7, color
+        });
+        function arrowPdf(tip, base) {
+          const dx = base.x - tip.x, dy = base.y - tip.y;
+          const len = Math.hypot(dx, dy);
+          if (len < 1) return;
+          const ux = dx/len, uy = dy/len, nx = -uy, ny = ux;
+          const al = 8, aw = 3;
+          page.drawLine({
+            start: { x: tip.x, y: height - tip.y },
+            end:   { x: tip.x + ux*al + nx*aw, y: height - (tip.y + uy*al + ny*aw) },
+            thickness: lw, color
+          });
+          page.drawLine({
+            start: { x: tip.x, y: height - tip.y },
+            end:   { x: tip.x + ux*al - nx*aw, y: height - (tip.y + uy*al - ny*aw) },
+            thickness: lw, color
+          });
+        }
+        arrowPdf(s.dimStart, s.dimEnd);
+        arrowPdf(s.dimEnd, s.dimStart);
+        const mid = { x: (s.dimStart.x+s.dimEnd.x)/2, y: height - (s.dimStart.y+s.dimEnd.y)/2 };
+        const fs = s.fontSize || 12;
+        page.drawText(formatDim(s.value), { x: mid.x - 20, y: mid.y + 4, size: fs * 0.7, color });
+      } else if (s.type === 'text') {
+        const lines = s.text.split('\n');
+        const fs = s.fontSize || 12;
+        try {
+          for (let i = 0; i < lines.length; i++) {
+            page.drawText(lines[i], {
+              x: s.pos.x, y: height - s.pos.y - fs * (i+1) * 0.9,
+              size: fs, color
+            });
+          }
+        } catch (e) { console.warn('テキスト描画スキップ:', e.message); }
+      } else if (s.type === 'midpoint') {
+        // 小さなx
+        const sz = 4;
+        page.drawLine({
+          start: { x: s.pos.x - sz, y: height - (s.pos.y - sz) },
+          end:   { x: s.pos.x + sz, y: height - (s.pos.y + sz) },
+          thickness: 1, color
+        });
+        page.drawLine({
+          start: { x: s.pos.x - sz, y: height - (s.pos.y + sz) },
+          end:   { x: s.pos.x + sz, y: height - (s.pos.y - sz) },
+          thickness: 1, color
+        });
+      }
+    }
+    pdfDoc.setSubject('PDFCAD_DATA:' + drawingsJson);
+    const bytes = await pdfDoc.save();
+    const blob = new Blob([bytes], {type: 'application/pdf'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'cad_drawing.pdf';
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    statusEl.textContent = 'PDF保存完了';
+  } catch (e) {
+    console.error(e);
+    statusEl.textContent = 'エラー: ' + e.message;
+  }
+});
+
+// 初期化
+window.addEventListener('load', () => {
+  resizeCanvases();
+  updateStatus();
+});
+</script>
+</body>
+</html>
